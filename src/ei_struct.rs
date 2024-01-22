@@ -3,18 +3,14 @@ use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::ei::ContractCoopStatusResponse;
+use crate::ei::{Contract, ContractCoopStatusResponse};
 
 pub mod builder;
 
-#[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct MajCoop {
-    contract_id: String,
-    coop_id: String,
-    boosted_count: u32,
-    total_tokens: u32,
-    finishing_time: DiscordTimestamp,
-    finished: bool,
+    contract: Contract,
+    coop: ContractCoopStatusResponse,
 }
 
 #[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -22,75 +18,111 @@ pub struct DiscordTimestamp {
     time: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DiscordTimestampDisplay {
     ShortDate,
     FullDate,
     HourMinuteTime,
     HourMinuteSecondTime,
+    #[default]
     FullDateTime,
     FullDateTimeDayOfWeek,
     Relative,
 }
 
-impl TryFrom<ContractCoopStatusResponse> for MajCoop {
-    type Error = &'static str;
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ContractGrade {
+    #[default]
+    Unset,
+    AAA,
+    AA,
+    A,
+    B,
+    C,
+}
 
-    fn try_from(resp: ContractCoopStatusResponse) -> Result<Self, Self::Error> {
-        let boosted_count: u32 = resp
+impl MajCoop {
+    pub fn new(contract: Contract, coop: ContractCoopStatusResponse) -> Self {
+        Self { contract, coop }
+    }
+
+    pub fn build_table_row(&self) -> String {
+        format!(
+            "[⧉](<https://eicoop-carpet.netlify.app/{}/{}>)`{} |    {}    |   {}   |   {}   | {} `",
+            self.contract_id(),
+            self.coop_id(),
+            self.stripped_coop_id(),
+            self.boosted_count(),
+            self.total_tokens(),
+            self.coop_predicted_duration(),
+            self.finishing_time()
+                .display(DiscordTimestampDisplay::Relative),
+        )
+    }
+
+    pub fn contract_id(&self) -> String {
+        self.coop.contract_identifier().to_owned()
+    }
+
+    pub fn coop_id(&self) -> String {
+        self.coop.coop_identifier().to_owned()
+    }
+
+    pub fn grade(&self) -> ContractGrade {
+        match self.coop.grade {
+            Some(0) => ContractGrade::Unset,
+            Some(1) => ContractGrade::C,
+            Some(2) => ContractGrade::B,
+            Some(3) => ContractGrade::A,
+            Some(4) => ContractGrade::AA,
+            Some(5) => ContractGrade::AAA,
+            _ => ContractGrade::default(),
+        }
+    }
+
+    pub fn stripped_coop_id(&self) -> String {
+        let coop_id = self.coop_id();
+        coop_id[0..=5].to_owned()
+    }
+
+    pub fn boosted_count(&self) -> u32 {
+        self.coop
             .contributors
             .iter()
             .filter(|player| player.boost_tokens_spent() >= 6)
             .count()
             .try_into()
-            .expect("there's no way there can be more than 2^32 players in a coop");
+            .expect("there's no way there can be more than 2^32 players in a coop")
+    }
 
-        let total_tokens: u32 = resp
+    pub fn total_tokens(&self) -> u32 {
+        self.coop
             .contributors
             .iter()
             .map(|player| player.boost_tokens() + player.boost_tokens_spent())
-            .sum();
-
-        Ok(MajCoop {
-            contract_id: resp.contract_identifier().to_string(),
-            coop_id: resp.coop_identifier().to_string(),
-            boosted_count,
-            total_tokens,
-            finishing_time: DiscordTimestamp { time: 0 },
-            finished: resp.all_goals_achieved(),
-        })
-    }
-}
-
-impl MajCoop {
-    pub fn build_table_row(&self) -> String {
-        format!(
-            "[⧉](<https://eicoop-carpet.netlify.app/{}/{}>)`{} |    {}    |   {}   |{}|{}`",
-            self.contract_id,
-            self.coop_id,
-            self.stripped_coop_id(),
-            self.boosted_count,
-            self.total_tokens,
-            self.finishing_time
-                .display(DiscordTimestampDisplay::Relative),
-            self.finished
-        )
+            .sum()
     }
 
-    pub fn stripped_coop_id(&self) -> String {
-        self.coop_id[0..=5].to_owned()
+    pub fn coop_predicted_duration(&self) -> String {
+        todo!()
+        // "test".to_string()
+    }
+    pub fn finishing_time(&self) -> DiscordTimestamp {
+        todo!()
+        // DiscordTimestamp { time: 0 }
     }
 }
 
 impl Display for MajCoop {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}: \n  boosted_count = {},\n  total_tokens = {},\n  finishing_time = {},\n finished = {}",
-        self.contract_id,
-        self.coop_id,
-        self.boosted_count,
-        self.total_tokens,
-        self.finishing_time,
-        self.finished
+        write!(f, "{}/{} ({}): \n  boosted_count = {},\n  total_tokens = {},\n  finishing_time = {},\n finished = {}",
+        self.contract_id(),
+        self.coop_id(),
+        self.grade(),
+        self.boosted_count(),
+        self.total_tokens(),
+        self.coop_predicted_duration(),
+        self.finishing_time()
         )
     }
 }
@@ -132,5 +164,22 @@ impl ContractCoopStatusResponse {
             .iter()
             .map(|player| player.contribution_rate())
             .sum()
+    }
+}
+
+impl Display for ContractGrade {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ContractGrade = {}",
+            match self {
+                Self::Unset => "Unset",
+                Self::C => "C",
+                Self::B => "B",
+                Self::A => "A",
+                Self::AA => "AA",
+                Self::AAA => "AAA",
+            }
+        )
     }
 }

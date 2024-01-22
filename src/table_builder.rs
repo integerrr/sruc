@@ -1,11 +1,11 @@
-use anyhow::{Context, Error, Ok, Result};
+use anyhow::{Context, Ok, Result};
 use prost::Message;
 use zune_inflate::DeflateDecoder;
 
 use crate::{
     ei::{
-        self, AuthenticatedMessage, ContractCoopStatusRequest, ContractCoopStatusResponse,
-        GetPeriodicalsRequest, PeriodicalsResponse,
+        AuthenticatedMessage, Contract, ContractCoopStatusRequest,
+        ContractCoopStatusResponse, GetPeriodicalsRequest, PeriodicalsResponse,
     },
     ei_request,
     ei_struct::MajCoop,
@@ -16,18 +16,16 @@ pub async fn build(contract_id: &str, coop_ids: &[&str]) -> Result<()> {
 
     let contract_obj = get_contract_struct(contract_id).await?;
 
-    dbg!(contract_obj);
-
     for coop_id in coop_ids {
         let req = ContractCoopStatusRequest::new(contract_id, *coop_id);
         let decoded_byte_arr =
             ei_request::ei_post(req, ei_request::RequestEndpoint::CoopStatus).await?;
         let auth_msg = AuthenticatedMessage::decode(decoded_byte_arr.as_slice())
             .context("Cannot decode into an `AuthenticatedMessage`")?;
-        let msg = ContractCoopStatusResponse::decode(auth_msg.message())
+        let coop_obj = ContractCoopStatusResponse::decode(auth_msg.message())
             .context("Cannot decode into a `ContractCoopStatusResponse`")?;
 
-        let coop = MajCoop::try_from(msg).map_err(Error::msg)?;
+        let coop = MajCoop::new(contract_obj.clone(), coop_obj);
         sr_coops.push(coop);
     }
 
@@ -35,7 +33,7 @@ pub async fn build(contract_id: &str, coop_ids: &[&str]) -> Result<()> {
     Ok(())
 }
 
-async fn get_contract_struct(contract_id: &str) -> Result<ei::Contract> {
+async fn get_contract_struct(contract_id: &str) -> Result<Contract> {
     let req = GetPeriodicalsRequest::new();
     let decoded_byte_arr =
         ei_request::ei_post(req, ei_request::RequestEndpoint::GetPeriodicals).await?;

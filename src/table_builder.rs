@@ -3,8 +3,12 @@ use prost::Message;
 use zune_inflate::DeflateDecoder;
 
 use crate::{
-    ei, ei_request,
-    ei_struct::{builder, MajCoop},
+    ei::{
+        self, AuthenticatedMessage, ContractCoopStatusRequest, ContractCoopStatusResponse,
+        GetPeriodicalsRequest, PeriodicalsResponse,
+    },
+    ei_request,
+    ei_struct::MajCoop,
 };
 
 pub async fn build(contract_id: &str, coop_ids: &[&str]) -> Result<()> {
@@ -15,12 +19,12 @@ pub async fn build(contract_id: &str, coop_ids: &[&str]) -> Result<()> {
     dbg!(contract_obj);
 
     for coop_id in coop_ids {
-        let req = builder::contract_coop_status_request_builder(contract_id, *coop_id);
+        let req = ContractCoopStatusRequest::new(contract_id, *coop_id);
         let decoded_byte_arr =
             ei_request::ei_post(req, ei_request::RequestEndpoint::CoopStatus).await?;
-        let auth_msg = ei::AuthenticatedMessage::decode(decoded_byte_arr.as_slice())
+        let auth_msg = AuthenticatedMessage::decode(decoded_byte_arr.as_slice())
             .context("Cannot decode into an `AuthenticatedMessage`")?;
-        let msg = ei::ContractCoopStatusResponse::decode(auth_msg.message())
+        let msg = ContractCoopStatusResponse::decode(auth_msg.message())
             .context("Cannot decode into a `ContractCoopStatusResponse`")?;
 
         let coop = MajCoop::try_from(msg).map_err(Error::msg)?;
@@ -32,16 +36,16 @@ pub async fn build(contract_id: &str, coop_ids: &[&str]) -> Result<()> {
 }
 
 async fn get_contract_struct(contract_id: &str) -> Result<ei::Contract> {
-    let req = builder::get_periodicals_request_builder();
+    let req = GetPeriodicalsRequest::new();
     let decoded_byte_arr =
         ei_request::ei_post(req, ei_request::RequestEndpoint::GetPeriodicals).await?;
-    let auth_msg = ei::AuthenticatedMessage::decode(decoded_byte_arr.as_slice())
+    let auth_msg = AuthenticatedMessage::decode(decoded_byte_arr.as_slice())
         .context("Cannot decode into an `AuthenticatedMessage`")?;
     let mut decoder = DeflateDecoder::new(auth_msg.message());
     let uncomped = decoder
         .decode_zlib()
         .context("Error inflating `message` field of the auth_msg")?;
-    let periodicals_resp = ei::PeriodicalsResponse::decode(uncomped.as_slice())
+    let periodicals_resp = PeriodicalsResponse::decode(uncomped.as_slice())
         .context("Cannot decode into `PeriodicalResponse`")?;
     let contract_resp = periodicals_resp.contracts.unwrap_or_default();
     let contract = contract_resp

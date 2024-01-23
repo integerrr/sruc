@@ -4,8 +4,8 @@ use zune_inflate::DeflateDecoder;
 
 use crate::{
     ei::{
-        AuthenticatedMessage, Contract, ContractCoopStatusRequest,
-        ContractCoopStatusResponse, GetPeriodicalsRequest, PeriodicalsResponse,
+        AuthenticatedMessage, Contract, ContractCoopStatusRequest, ContractCoopStatusResponse,
+        GetPeriodicalsRequest, PeriodicalsResponse,
     },
     ei_request,
     ei_struct::MajCoop,
@@ -57,7 +57,7 @@ async fn get_contract_struct(contract_id: &str) -> Result<Contract> {
 }
 
 fn print_sruc(coops: Vec<MajCoop>) -> Result<()> {
-    println!("`  Coop   | Boosted | Tokens | Duration  | Finish`");
+    println!("`  Coop  | Boosted | Tokens |  Duration  |    Finish    `");
 
     for coop in coops {
         println!("{}", coop.build_table_row());

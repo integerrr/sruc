@@ -1,11 +1,16 @@
 use std::fmt::Display;
 
+use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::ei::{Contract, ContractCoopStatusResponse};
+use crate::ei::{self, Contract, ContractCoopStatusResponse};
 
 pub mod builder;
+
+const SECONDS_IN_A_MINUTE: f64 = 60f64;
+const SECONDS_IN_AN_HOUR: f64 = SECONDS_IN_A_MINUTE * 60f64;
+const SECONDS_IN_A_DAY: f64 = SECONDS_IN_AN_HOUR * 24f64;
 
 #[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct MajCoop {
@@ -30,17 +35,6 @@ pub enum DiscordTimestampDisplay {
     Relative,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ContractGrade {
-    #[default]
-    Unset,
-    AAA,
-    AA,
-    A,
-    B,
-    C,
-}
-
 impl MajCoop {
     pub fn new(contract: Contract, coop: ContractCoopStatusResponse) -> Self {
         Self { contract, coop }
@@ -48,15 +42,15 @@ impl MajCoop {
 
     pub fn build_table_row(&self) -> String {
         format!(
-            "[⧉](<https://eicoop-carpet.netlify.app/{}/{}>)`{} |    {}    |   {}   |   {}   | {} `",
+            "[⧉](<https://eicoop-carpet.netlify.app/{}/{}>)`{} |   {}   |  {}  |   {}   | {} `",
             self.contract_id(),
             self.coop_id(),
             self.stripped_coop_id(),
             self.boosted_count(),
             self.total_tokens(),
-            self.coop_predicted_duration(),
+            self.total_duration(),
             self.finishing_time()
-                .display(DiscordTimestampDisplay::Relative),
+                .display(DiscordTimestampDisplay::FullDateTime),
         )
     }
 
@@ -66,18 +60,6 @@ impl MajCoop {
 
     pub fn coop_id(&self) -> String {
         self.coop.coop_identifier().to_owned()
-    }
-
-    pub fn grade(&self) -> ContractGrade {
-        match self.coop.grade {
-            Some(0) => ContractGrade::Unset,
-            Some(1) => ContractGrade::C,
-            Some(2) => ContractGrade::B,
-            Some(3) => ContractGrade::A,
-            Some(4) => ContractGrade::AA,
-            Some(5) => ContractGrade::AAA,
-            _ => ContractGrade::default(),
-        }
     }
 
     pub fn stripped_coop_id(&self) -> String {
@@ -103,13 +85,52 @@ impl MajCoop {
             .sum()
     }
 
-    pub fn coop_predicted_duration(&self) -> String {
-        todo!()
-        // "test".to_string()
+    pub fn total_duration(&self) -> String {
+        let contract_time_limit = self.contract.length_seconds();
+
+        let coop_total_shipping_rate = self.coop.total_shipping_rate();
+        let eggs_remaining = self.get_contract_egg_goal() - self.coop.total_amount();
+        let predicted_remaining_time_to_finish = eggs_remaining / coop_total_shipping_rate;
+        
+        let coop_valid_time_remaining = self.coop.seconds_remaining();
+
+        let total_prediction_coop_duration = contract_time_limit - coop_valid_time_remaining + predicted_remaining_time_to_finish;
+
+        let day = (total_prediction_coop_duration / SECONDS_IN_A_DAY).floor();
+        let hour = ((total_prediction_coop_duration - day * SECONDS_IN_A_DAY) / SECONDS_IN_AN_HOUR).floor();
+        let minute = ((total_prediction_coop_duration - day * SECONDS_IN_A_DAY - hour * SECONDS_IN_AN_HOUR)
+            / SECONDS_IN_A_MINUTE)
+            .floor();
+
+        format!("{}d{}h{}m", day, hour, minute)
     }
+
     pub fn finishing_time(&self) -> DiscordTimestamp {
-        todo!()
-        // DiscordTimestamp { time: 0 }
+        let coop_total_shipping_rate = self.coop.total_shipping_rate();
+        let eggs_remaining = self.get_contract_egg_goal() - self.coop.total_amount();
+        let time_remaining = eggs_remaining / coop_total_shipping_rate;
+
+        DiscordTimestamp::finish_time_from_secs_remaining(time_remaining)
+    }
+
+    pub fn get_contract_egg_goal(&self) -> f64 {
+        let contract_grade = self.coop.grade();
+        let contract_spec = self
+            .contract
+            .grade_specs
+            .iter()
+            .find(|grade| grade.grade() == contract_grade)
+            .expect("This grade must exist")
+            .to_owned();
+
+        let egg_goal = contract_spec
+            .goals
+            .iter()
+            .max_by_key(|goal| OrderedFloat(goal.target_amount()))
+            .expect("a largest goal `Goal` must exist")
+            .target_amount();
+
+        egg_goal
     }
 }
 
@@ -118,10 +139,10 @@ impl Display for MajCoop {
         write!(f, "{}/{} ({}): \n  boosted_count = {},\n  total_tokens = {},\n  finishing_time = {},\n finished = {}",
         self.contract_id(),
         self.coop_id(),
-        self.grade(),
+        self.coop.grade(),
         self.boosted_count(),
         self.total_tokens(),
-        self.coop_predicted_duration(),
+        self.total_duration(),
         self.finishing_time()
         )
     }
@@ -167,18 +188,18 @@ impl ContractCoopStatusResponse {
     }
 }
 
-impl Display for ContractGrade {
+impl Display for ei::contract::PlayerGrade {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "ContractGrade = {}",
             match self {
-                Self::Unset => "Unset",
-                Self::C => "C",
-                Self::B => "B",
-                Self::A => "A",
-                Self::AA => "AA",
-                Self::AAA => "AAA",
+                Self::GradeUnset => "Unset",
+                Self::GradeC => "C",
+                Self::GradeB => "B",
+                Self::GradeA => "A",
+                Self::GradeAa => "AA",
+                Self::GradeAaa => "AAA",
             }
         )
     }

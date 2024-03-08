@@ -6,9 +6,9 @@ pub mod ei {
 }
 
 const CURRENT_CLIENT_VERSION: u32 = 999;
-const CLIENT_VERSION: u32 = 62;
-const VERSION: &str = "1.29.1";
-const BUILD: &str = "111279";
+const CLIENT_VERSION: u32 = 64;
+const VERSION: &str = "1.31";
+const BUILD: &str = "111284";
 const PLATFORM: &str = "IOS";
 const EID: &'static str = dotenv!("EID");
 

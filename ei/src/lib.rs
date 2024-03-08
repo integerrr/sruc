@@ -1,3 +1,4 @@
+use dotenvy_macro::dotenv;
 use ei::{contract, BasicRequestInfo, ContractCoopStatusRequest, GetPeriodicalsRequest};
 
 pub mod ei {
@@ -9,7 +10,7 @@ const CLIENT_VERSION: u32 = 62;
 const VERSION: &str = "1.29.1";
 const BUILD: &str = "111279";
 const PLATFORM: &str = "IOS";
-const EID: &str = "";
+const EID: &'static str = dotenv!("EID");
 
 impl BasicRequestInfo {
     pub fn new() -> Self {

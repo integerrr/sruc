@@ -1,4 +1,8 @@
-use crate::ei::{BasicRequestInfo, ContractCoopStatusRequest, GetPeriodicalsRequest};
+use ei::{contract, BasicRequestInfo, ContractCoopStatusRequest, GetPeriodicalsRequest};
+
+pub mod ei {
+    include!(concat!(env!("OUT_DIR"), "/ei.rs"));
+}
 
 const CURRENT_CLIENT_VERSION: u32 = 999;
 const CLIENT_VERSION: u32 = 62;
@@ -44,5 +48,22 @@ impl GetPeriodicalsRequest {
             current_client_version: Some(CURRENT_CLIENT_VERSION),
             ..Default::default()
         }
+    }
+}
+
+impl std::fmt::Display for contract::PlayerGrade {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ContractGrade = {}",
+            match self {
+                Self::GradeUnset => "Unset",
+                Self::GradeC => "C",
+                Self::GradeB => "B",
+                Self::GradeA => "A",
+                Self::GradeAa => "AA",
+                Self::GradeAaa => "AAA",
+            }
+        )
     }
 }

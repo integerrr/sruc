@@ -1,46 +1,31 @@
 use std::fmt::Display;
 
+use ei::ei::{Contract, ContractCoopStatusResponse};
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::ei::{self, Contract, ContractCoopStatusResponse};
-
-pub mod builder;
+use crate::formatter::discord_formatter::{DiscordTimestamp, DiscordTimestampDisplay};
 
 const SECONDS_IN_A_MINUTE: f64 = 60f64;
 const SECONDS_IN_AN_HOUR: f64 = SECONDS_IN_A_MINUTE * 60f64;
 const SECONDS_IN_A_DAY: f64 = SECONDS_IN_AN_HOUR * 24f64;
 
 #[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub struct MajCoop {
+pub struct ActiveContract {
     contract: Contract,
     coop: ContractCoopStatusResponse,
 }
 
-#[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub struct DiscordTimestamp {
-    time: i64,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub enum DiscordTimestampDisplay {
-    ShortDate,
-    FullDate,
-    HourMinuteTime,
-    HourMinuteSecondTime,
-    #[default]
-    FullDateTime,
-    FullDateTimeDayOfWeek,
-    Relative,
-}
-
-impl MajCoop {
+impl ActiveContract {
     pub fn new(contract: Contract, coop: ContractCoopStatusResponse) -> Self {
         Self { contract, coop }
     }
 
     pub fn build_table_row(&self) -> String {
+        // let timestamp = self.coop.contributors.clone().first().unwrap().clone().farm_info.unwrap().clone().timestamp();
+        // dbg!(timestamp);
+
         format!(
             "[⧉](<https://eicoop-carpet.netlify.app/{}/{}>)`{} |   {}   |  {}  |   {}   | {} `",
             self.contract_id(),
@@ -88,25 +73,28 @@ impl MajCoop {
     pub fn total_duration(&self) -> String {
         let contract_time_limit = self.contract.length_seconds();
 
-        let coop_total_shipping_rate = self.coop.total_shipping_rate();
+        let coop_total_shipping_rate = self.total_shipping_rate();
         let eggs_remaining = self.get_contract_egg_goal() - self.coop.total_amount();
         let predicted_remaining_time_to_finish = eggs_remaining / coop_total_shipping_rate;
-        
+
         let coop_valid_time_remaining = self.coop.seconds_remaining();
 
-        let total_prediction_coop_duration = contract_time_limit - coop_valid_time_remaining + predicted_remaining_time_to_finish;
+        let total_prediction_coop_duration =
+            contract_time_limit - coop_valid_time_remaining + predicted_remaining_time_to_finish;
 
         let day = (total_prediction_coop_duration / SECONDS_IN_A_DAY).floor();
-        let hour = ((total_prediction_coop_duration - day * SECONDS_IN_A_DAY) / SECONDS_IN_AN_HOUR).floor();
-        let minute = ((total_prediction_coop_duration - day * SECONDS_IN_A_DAY - hour * SECONDS_IN_AN_HOUR)
-            / SECONDS_IN_A_MINUTE)
+        let hour = ((total_prediction_coop_duration - day * SECONDS_IN_A_DAY) / SECONDS_IN_AN_HOUR)
             .floor();
+        let minute =
+            ((total_prediction_coop_duration - day * SECONDS_IN_A_DAY - hour * SECONDS_IN_AN_HOUR)
+                / SECONDS_IN_A_MINUTE)
+                .floor();
 
         format!("{}d{}h{}m", day, hour, minute)
     }
 
     pub fn finishing_time(&self) -> DiscordTimestamp {
-        let coop_total_shipping_rate = self.coop.total_shipping_rate();
+        let coop_total_shipping_rate = self.total_shipping_rate();
         let eggs_remaining = self.get_contract_egg_goal() - self.coop.total_amount();
         let time_remaining = eggs_remaining / coop_total_shipping_rate;
 
@@ -132,9 +120,18 @@ impl MajCoop {
 
         egg_goal
     }
+
+    /// Returns the **per second** shipping rate of the entire coop.
+    pub fn total_shipping_rate(&self) -> f64 {
+        self.coop
+            .contributors
+            .iter()
+            .map(|player| player.contribution_rate())
+            .sum()
+    }
 }
 
-impl Display for MajCoop {
+impl Display for ActiveContract {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}/{} ({}): \n  boosted_count = {},\n  total_tokens = {},\n  finishing_time = {},\n finished = {}",
         self.contract_id(),
@@ -144,63 +141,6 @@ impl Display for MajCoop {
         self.total_tokens(),
         self.total_duration(),
         self.finishing_time()
-        )
-    }
-}
-
-impl DiscordTimestamp {
-    pub fn display(&self, display_mode: DiscordTimestampDisplay) -> String {
-        let identifier = match display_mode {
-            DiscordTimestampDisplay::ShortDate => "d",
-            DiscordTimestampDisplay::FullDate => "D",
-            DiscordTimestampDisplay::HourMinuteTime => "t",
-            DiscordTimestampDisplay::HourMinuteSecondTime => "T",
-            DiscordTimestampDisplay::FullDateTime => "f",
-            DiscordTimestampDisplay::FullDateTimeDayOfWeek => "F",
-            DiscordTimestampDisplay::Relative => "R",
-        };
-
-        format!("`<t:{}:{}>`", self.time, identifier)
-    }
-
-    pub fn finish_time_from_secs_remaining(secs_remaining: f64) -> DiscordTimestamp {
-        let current_time = chrono::Utc::now().timestamp();
-        let secs_remaining_as_i64 = secs_remaining as i64;
-        DiscordTimestamp {
-            time: secs_remaining_as_i64 + current_time,
-        }
-    }
-}
-
-impl Display for DiscordTimestamp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DiscordTimestamp( time = {} )", self.time)
-    }
-}
-
-impl ContractCoopStatusResponse {
-    /// Returns the **per second** shipping rate of the entire coop.
-    pub fn total_shipping_rate(&self) -> f64 {
-        self.contributors
-            .iter()
-            .map(|player| player.contribution_rate())
-            .sum()
-    }
-}
-
-impl Display for ei::contract::PlayerGrade {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "ContractGrade = {}",
-            match self {
-                Self::GradeUnset => "Unset",
-                Self::GradeC => "C",
-                Self::GradeB => "B",
-                Self::GradeA => "A",
-                Self::GradeAa => "AA",
-                Self::GradeAaa => "AAA",
-            }
         )
     }
 }

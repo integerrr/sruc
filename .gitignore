@@ -1,1 +1,6 @@
-/target
+**/*.rs.bk
+**/.idea
+
+**/target
+
+**/.DS_STORE

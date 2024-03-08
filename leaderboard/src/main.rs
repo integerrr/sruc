@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use sruc::table_builder;
+use leaderboard::table_builder;
 
 #[tokio::main]
 async fn main() -> Result<()> {

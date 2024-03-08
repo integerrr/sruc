@@ -2,14 +2,12 @@ use anyhow::{Context, Ok, Result};
 use prost::Message;
 use zune_inflate::DeflateDecoder;
 
-use crate::{
-    ei::{
-        AuthenticatedMessage, Contract, ContractCoopStatusRequest, ContractCoopStatusResponse,
-        GetPeriodicalsRequest, PeriodicalsResponse,
-    },
-    ei_request,
-    ei_struct::MajCoop,
+use ei::ei::{
+    AuthenticatedMessage, Contract, ContractCoopStatusRequest, ContractCoopStatusResponse,
+    GetPeriodicalsRequest, PeriodicalsResponse,
 };
+
+use crate::{contracts::ActiveContract, ei_request};
 
 pub async fn build(contract_id: &str, coop_ids: &[&str]) -> Result<()> {
     let mut sr_coops = vec![];
@@ -25,7 +23,7 @@ pub async fn build(contract_id: &str, coop_ids: &[&str]) -> Result<()> {
         let coop_obj = ContractCoopStatusResponse::decode(auth_msg.message())
             .context("Cannot decode into a `ContractCoopStatusResponse`")?;
 
-        let coop = MajCoop::new(contract_obj.clone(), coop_obj);
+        let coop = ActiveContract::new(contract_obj.clone(), coop_obj);
         sr_coops.push(coop);
     }
 
@@ -56,7 +54,7 @@ async fn get_contract_struct(contract_id: &str) -> Result<Contract> {
     Ok(contract)
 }
 
-fn print_sruc(coops: Vec<MajCoop>) -> Result<()> {
+fn print_sruc(coops: Vec<ActiveContract>) -> Result<()> {
     println!("`  Coop  | Boosted | Tokens |  Duration  |    Finish    `");
 
     for coop in coops {

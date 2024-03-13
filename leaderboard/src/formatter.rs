@@ -1,8 +1,8 @@
-use crate::contracts::ActiveContract;
-
-pub mod discord_formatter;
-pub mod sruc_table_formatter;
+pub mod discord_table;
+pub mod discord_timestamp;
+pub mod duration;
+pub mod string_formatter;
 
 pub trait ContractFormatter {
-    fn format(contract: &ActiveContract) -> String;
+    fn format() -> String;
 }

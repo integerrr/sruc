@@ -37,7 +37,7 @@ impl<T: Clone> DiscordTable<T> {
             .map(|c| string_formatter::align(c.name.clone(), c.width, c.alignment))
             .collect::<Vec<_>>();
 
-        format!("`{}`\n", col_names.join("|"))
+        format!("`{}`", col_names.join("|"))
     }
 
     pub fn get_table_body(&self) -> String {

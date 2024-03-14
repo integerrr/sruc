@@ -34,6 +34,7 @@ impl ActiveContract {
                 coop_code.clone().into()
             ))?;
         self.coops.push(new);
+        self.coops.sort();
         Ok(())
     }
 

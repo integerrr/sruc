@@ -23,12 +23,15 @@ impl DiscordTimestamp {
         format!("<t:{}:{}>", self.time, identifier)
     }
 
-    pub fn finish_time_from_secs_remaining(secs_remaining: i64) -> DiscordTimestamp {
+    pub fn new_from_secs_remaining(secs_remaining: i64) -> Self {
         let current_time = chrono::Utc::now().timestamp();
-        let secs_remaining_as_i64 = secs_remaining;
-        DiscordTimestamp {
-            time: secs_remaining_as_i64 + current_time,
+        Self {
+            time: secs_remaining + current_time,
         }
+    }
+
+    pub fn new(time: i64) -> Self {
+        Self { time }
     }
 }
 

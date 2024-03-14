@@ -31,6 +31,11 @@ impl DiscordTimestamp {
         }
     }
 
+    pub fn new_from_now() -> Self {
+        let now = chrono::Utc::now().timestamp();
+        Self { time: now }
+    }
+
     pub fn new(time: i64) -> Self {
         Self { time }
     }

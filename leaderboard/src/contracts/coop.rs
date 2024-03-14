@@ -67,7 +67,10 @@ impl Coop {
     }
 
     pub fn finishing_time(&self) -> DiscordTimestamp {
-        DiscordTimestamp::new_from_secs_remaining(self.predicted_seconds_remaining())
+        DiscordTimestamp::new_from_secs_remaining(
+            self.predicted_seconds_remaining()
+                - self.coop_status.seconds_since_all_goals_achieved() as i64,
+        )
     }
 
     pub fn total_predicted_duration(&self) -> Duration {

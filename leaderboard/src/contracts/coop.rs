@@ -12,7 +12,7 @@ use crate::egg_inc_api::get_coop_status;
 use crate::formatter::discord_timestamp::DiscordTimestamp;
 use crate::formatter::duration::Duration;
 
-#[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Error, Clone, Serialize, Deserialize, Default)]
 pub struct Coop {
     coop_status: ContractCoopStatusResponse,
 
@@ -143,6 +143,38 @@ impl Display for Coop {
         write!(f, "{:?}", self)
     }
 }
+
+impl PartialOrd for Coop {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(&other))
+    }
+}
+
+impl Ord for Coop {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let mut ord = self
+            .total_predicted_duration()
+            .cmp(&other.total_predicted_duration());
+        if ord == Ordering::Equal {
+            ord = other.boosted_count().cmp(&self.boosted_count());
+        }
+        if ord == Ordering::Equal {
+            ord = other.total_tokens().cmp(&self.total_tokens());
+        }
+        if ord == Ordering::Equal {
+            ord = self.finishing_time().cmp(&other.finishing_time());
+        }
+        ord
+    }
+}
+
+impl PartialEq for Coop {
+    fn eq(&self, other: &Self) -> bool {
+        self.coop_id() == other.coop_id() && self.contract_id() == other.contract_id()
+    }
+}
+
+impl Eq for Coop {}
 
 // region:      --- Builder States
 #[derive(Debug, Clone, Default)]

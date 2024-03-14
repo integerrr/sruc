@@ -1,9 +1,10 @@
+use std::cmp::Ordering;
 use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-#[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Error, Clone, Serialize, Deserialize, Default)]
 pub struct DiscordTimestamp {
     time: i64,
 }
@@ -40,6 +41,26 @@ impl Display for DiscordTimestamp {
         write!(f, "DiscordTimestamp( time = {} )", self.time)
     }
 }
+
+impl Ord for DiscordTimestamp {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.time.cmp(&other.time)
+    }
+}
+
+impl PartialOrd for DiscordTimestamp {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(&other))
+    }
+}
+
+impl PartialEq for DiscordTimestamp {
+    fn eq(&self, other: &Self) -> bool {
+        self.time == other.time
+    }
+}
+
+impl Eq for DiscordTimestamp {}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DiscordTimestampDisplay {

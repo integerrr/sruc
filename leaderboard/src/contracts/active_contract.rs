@@ -24,11 +24,15 @@ impl ActiveContract {
         }
     }
 
-    pub async fn add_coop(&mut self, coop_code: impl Into<String>) -> Result<()> {
+    pub async fn add_coop(&mut self, coop_code: impl Into<String> + Clone) -> Result<()> {
         let new = CoopBuilder::new()
-            .with(self.contract.clone(), coop_code)
+            .with(self.contract.clone(), coop_code.clone())
             .build()
-            .await?;
+            .await
+            .context(format!(
+                "Invalid coop code: \"{}\"",
+                coop_code.clone().into()
+            ))?;
         self.coops.push(new);
         Ok(())
     }

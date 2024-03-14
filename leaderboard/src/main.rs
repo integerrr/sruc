@@ -15,7 +15,9 @@ async fn main() -> Result<()> {
         .await?;
 
     for id in coop_ids {
-        contr.add_coop(id).await?;
+        if let Err(e) = contr.add_coop(id).await {
+            println!("WARN: {}, continuing...", e)
+        }
     }
 
     let mut table: DiscordTable<Coop> = DiscordTable::new();

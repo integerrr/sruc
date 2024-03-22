@@ -18,7 +18,22 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
+
+      - name: Create .env file for build step
+        env:
+          EID: EI1234567890123456
+        run: |
+          touch .env
+          echo EID="$EID" >> .env
+
+          echo "cat .env"
+          cat .env
+
+          echo "ls -a ."
+          ls -a .
+        shell: zsh
       - name: Build
         run: cargo build --verbose

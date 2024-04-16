@@ -8,7 +8,7 @@ use thiserror::Error;
 use ei::ei::Contract;
 
 use crate::contracts::coop::{Coop, CoopBuilder};
-use crate::egg_inc_api::get_periodicals;
+use crate::egg_inc_api::{get_backup_contracts, get_periodicals};
 
 #[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct ActiveContract {
@@ -68,7 +68,10 @@ impl ActiveContractBuilder<NoContractId> {
 }
 
 impl<I> ActiveContractBuilder<I> {
-    pub fn contract_id(self, contract_id: impl Into<String>) -> ActiveContractBuilder<ContractId> {
+    pub fn with_contract_id(
+        self,
+        contract_id: impl Into<String>,
+    ) -> ActiveContractBuilder<ContractId> {
         ActiveContractBuilder {
             contract_id: ContractId(contract_id.into()),
         }
@@ -81,12 +84,17 @@ impl ActiveContractBuilder<ContractId> {
         let contracts_response = periodicals_response
             .contracts
             .context("No ContractsResponse found")?;
-        let contract = contracts_response
+        if let Some(contract) = contracts_response
             .contracts
             .iter()
             .find(|&c| c.identifier() == self.contract_id.0)
-            .context("No contract found with the given contract ID")?;
+        {
+            return Ok(ActiveContract::new(contract.clone()));
+        }
 
-        Ok(ActiveContract::new(contract.clone()))
+        match get_backup_contracts(&self.contract_id.0).await {
+            Ok(c) => Ok(ActiveContract::new(c.clone())),
+            Err(e) => Err(e),
+        }
     }
 }

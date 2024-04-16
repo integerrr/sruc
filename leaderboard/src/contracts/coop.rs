@@ -5,9 +5,10 @@ use anyhow::{Error, Result};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use ei::ei::contract::GradeSpec;
+use ei::ei::contract::{Goal, GradeSpec};
 use ei::ei::{contract_coop_status_response::ResponseStatus, Contract, ContractCoopStatusResponse};
 
+use crate::custom_errors::InvalidCoopCode;
 use crate::egg_inc_api::get_coop_status;
 use crate::formatter::discord_timestamp::DiscordTimestamp;
 use crate::formatter::duration::Duration;
@@ -30,7 +31,7 @@ impl Coop {
                 .grade_specs
                 .iter()
                 .find(|&g| g.grade() == coop_status.grade())
-                .expect("The grade must exist")
+                .unwrap_or(&GradeSpec::default())
                 .clone(),
             contract_farm_max_secs_allowed: contract.length_seconds(),
         }
@@ -95,7 +96,7 @@ impl Coop {
                     .partial_cmp(&g2.target_amount())
                     .unwrap_or(Ordering::Less)
             })
-            .expect("a largest goal must exist")
+            .unwrap_or(&Goal::default())
             .target_amount()
     }
 
@@ -225,14 +226,3 @@ impl CoopBuilder<WithContract, WithCoopCode> {
         }
     }
 }
-
-// region:      --- Custom Error Types
-#[derive(Debug, Copy, Clone, Error)]
-struct InvalidCoopCode;
-
-impl Display for InvalidCoopCode {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Invalid coop code used")
-    }
-}
-// endregion:   --- Custom Error Types

@@ -37,7 +37,9 @@ impl ActiveContract {
     pub async fn add_coops(&mut self, coop_codes: &[impl Into<String> + Clone]) -> Result<()> {
         for code in coop_codes {
             let new = match CoopBuilder::new()
-                .with(self.contract.clone(), code.clone())
+                .with_contract(self.contract.clone())
+                .with_coop_code(code.clone())
+                .with_pg_pool(self.pg_pool.clone())
                 .build()
                 .await
             {

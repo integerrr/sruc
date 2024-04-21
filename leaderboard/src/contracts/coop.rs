@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 
 use anyhow::{Error, Result};
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use thiserror::Error;
 
 use ei::ei::contract::{Goal, GradeSpec};
@@ -13,8 +14,9 @@ use crate::egg_inc_api::get_coop_status;
 use crate::formatter::discord_timestamp::DiscordTimestamp;
 use crate::formatter::duration::Duration;
 
-#[derive(Debug, Error, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Error, Clone)]
 pub struct Coop {
+    pg_pool: PgPool,
     coop_status: ContractCoopStatusResponse,
 
     // These fields are stored because you have to extract these from the contract
@@ -24,8 +26,9 @@ pub struct Coop {
 }
 
 impl Coop {
-    fn new(coop_status: ContractCoopStatusResponse, contract: Contract) -> Self {
+    fn new(pg_pool: PgPool, coop_status: ContractCoopStatusResponse, contract: Contract) -> Self {
         Self {
+            pg_pool,
             coop_status: coop_status.clone(),
             grade_spec: contract
                 .grade_specs
@@ -198,38 +201,63 @@ pub struct WithContract(Contract);
 pub struct NoCoopCode;
 #[derive(Debug, Clone, Default)]
 pub struct WithCoopCode(String);
+
+#[derive(Debug, Clone, Default)]
+pub struct NoPgPool;
+#[derive(Debug, Clone)]
+pub struct WithPgPool(PgPool);
 // endregion:   --- Builder States
 
 #[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub struct CoopBuilder<K, C> {
+pub struct CoopBuilder<K, C, P> {
     contract: K,
     coop_code: C,
+    pg_pool: P,
 }
 
-impl CoopBuilder<NoContract, NoCoopCode> {
+impl CoopBuilder<NoContract, NoCoopCode, NoPgPool> {
     pub fn new() -> Self {
         CoopBuilder::default()
     }
 }
 
-impl<K, C> CoopBuilder<K, C> {
-    pub fn with(
-        self,
-        contract: Contract,
-        coop_code: impl Into<String>,
-    ) -> CoopBuilder<WithContract, WithCoopCode> {
+impl<C, P> CoopBuilder<NoContract, C, P> {
+    pub fn with_contract(self, contract: Contract) -> CoopBuilder<WithContract, C, P> {
         CoopBuilder {
             contract: WithContract(contract),
-            coop_code: WithCoopCode(coop_code.into()),
+            coop_code: self.coop_code,
+            pg_pool: self.pg_pool,
         }
     }
 }
 
-impl CoopBuilder<WithContract, WithCoopCode> {
+impl<K, P> CoopBuilder<K, NoCoopCode, P> {
+    pub fn with_coop_code(self, coop_code: impl Into<String>) -> CoopBuilder<K, WithCoopCode, P> {
+        CoopBuilder {
+            contract: self.contract,
+            coop_code: WithCoopCode(coop_code.into()),
+            pg_pool: self.pg_pool,
+        }
+    }
+}
+
+impl<K, C> CoopBuilder<K, C, NoPgPool> {
+    pub fn with_pg_pool(self, pg_pool: PgPool) -> CoopBuilder<K, C, WithPgPool> {
+        CoopBuilder {
+            contract: self.contract,
+            coop_code: self.coop_code,
+            pg_pool: WithPgPool(pg_pool),
+        }
+    }
+}
+
+impl CoopBuilder<WithContract, WithCoopCode, WithPgPool> {
     pub async fn build(self) -> Result<Coop> {
         let coop = get_coop_status(self.contract.0.identifier(), &self.coop_code.0).await?;
         match &coop.response_status() {
-            ResponseStatus::NoError => Ok(Coop::new(coop, self.contract.0)),
+            ResponseStatus::NoError => {
+                Ok(Coop::new(self.pg_pool.0, coop, self.contract.0))
+            }
             _ => Err(Error::from(InvalidCoopCode)),
         }
     }

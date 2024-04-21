@@ -18,8 +18,8 @@ impl<T: Clone> DiscordTable<T> {
         self.columns.push(col);
     }
 
-    pub fn add_data_row(&mut self, row: T) {
-        self.data_rows.push(row);
+    pub fn add_data_rows(&mut self, rows: &[T]) {
+        rows.iter().for_each(|r| self.data_rows.push(r.clone()));
     }
 
     pub fn columns(&self) -> Iter<'_, DiscordTableColumn<T>> {

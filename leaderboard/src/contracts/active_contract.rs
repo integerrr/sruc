@@ -171,7 +171,10 @@ impl ActiveContractBuilder<ContractId, CoopFlagSpecified, WithPgPool> {
     async fn update_db(&self, contract: &Contract) -> Result<PgQueryResult> {
         Ok(sqlx::query!("INSERT INTO contracts(kev_id, release_date) VALUES ($1, $2) ON CONFLICT (kev_id, release_date) DO NOTHING;",
             self.contract_id.0,
-            OffsetDateTime::from_unix_timestamp(contract.start_time() as i64).unwrap_or(OffsetDateTime::from_unix_timestamp(0_i64).unwrap())
+            // `start_time()` is the unix timestamp for the contract's start time in `f64` for some reason,
+            // should be valid unless Kev decides to blow up,
+            // and the conversion wouldn't lose precision for the next 31 million years so it's fine
+            OffsetDateTime::from_unix_timestamp(contract.start_time() as i64).unwrap()
         )
         .execute(&self.pg_pool.0)
         .await?)

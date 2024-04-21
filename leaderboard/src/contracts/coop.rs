@@ -83,6 +83,14 @@ impl Coop {
         Duration::new(total)
     }
 
+    pub async fn update_coop_status(&mut self) {
+        let new_status = get_coop_status(self.contract_id(), self.coop_id())
+            .await
+            .expect("Both contract ID and coop code should have been validated at this point");
+
+        self.coop_status = new_status;
+    }
+
     fn coop_allowable_seconds_remaining(&self) -> f64 {
         self.coop_status.seconds_remaining()
     }

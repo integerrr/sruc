@@ -4,24 +4,31 @@ use std::slice::Iter;
 use anyhow::{Context, Result};
 use log::error;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use thiserror::Error;
 
 use ei::ei::Contract;
 
-use crate::contracts::coop::{Coop, CoopBuilder};
 use crate::egg_inc_api::{get_backup_contracts, get_periodicals};
 
-#[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq)]
+use super::coop::{Coop, CoopBuilder};
+use super::coop_flag::CoopFlag;
+
+#[derive(Debug, Error, Clone)]
 pub struct ActiveContract {
     contract: Contract,
+    coop_flag: CoopFlag,
     coops: Vec<Coop>,
+    pg_pool: PgPool,
 }
 
 impl ActiveContract {
-    fn new(contract: Contract) -> Self {
+    fn new(contract: Contract, coop_flag: CoopFlag, pg_pool: PgPool) -> Self {
         Self {
             contract,
+            coop_flag,
             coops: vec![],
+            pg_pool,
         }
     }
 
@@ -61,31 +68,62 @@ impl Display for ActiveContract {
 pub struct NoContractId;
 #[derive(Debug, Clone, Default)]
 pub struct ContractId(String);
+#[derive(Debug, Clone, Default)]
+pub struct CoopFlagNotSpecified;
+#[derive(Debug, Clone, Default)]
+pub struct CoopFlagSpecified(CoopFlag);
+#[derive(Debug, Clone, Default)]
+pub struct NoPgPool;
+#[derive(Debug, Clone)]
+pub struct WithPgPool(PgPool);
 // endregion:   --- Builder States
 
 #[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub struct ActiveContractBuilder<I> {
+pub struct ActiveContractBuilder<I, F, P> {
     contract_id: I,
+    coop_flag: F,
+    pg_pool: P,
 }
 
-impl ActiveContractBuilder<NoContractId> {
+impl ActiveContractBuilder<NoContractId, CoopFlagNotSpecified, NoPgPool> {
     pub fn new() -> Self {
         ActiveContractBuilder::default()
     }
 }
 
-impl<I> ActiveContractBuilder<I> {
+impl<I, F, P> ActiveContractBuilder<I, F, P> {
     pub fn with_contract_id(
         self,
         contract_id: impl Into<String>,
-    ) -> ActiveContractBuilder<ContractId> {
+    ) -> ActiveContractBuilder<ContractId, F, P> {
         ActiveContractBuilder {
             contract_id: ContractId(contract_id.into()),
+            coop_flag: self.coop_flag,
+            pg_pool: self.pg_pool,
+        }
+    }
+
+    pub fn with_coop_flag(
+        self,
+        coop_flag: CoopFlag,
+    ) -> ActiveContractBuilder<I, CoopFlagSpecified, P> {
+        ActiveContractBuilder {
+            contract_id: self.contract_id,
+            coop_flag: CoopFlagSpecified(coop_flag),
+            pg_pool: self.pg_pool,
+        }
+    }
+
+    pub fn with_pg_pool(self, pool: PgPool) -> ActiveContractBuilder<I, F, WithPgPool> {
+        ActiveContractBuilder {
+            contract_id: self.contract_id,
+            coop_flag: self.coop_flag,
+            pg_pool: WithPgPool(pool),
         }
     }
 }
 
-impl ActiveContractBuilder<ContractId> {
+impl ActiveContractBuilder<ContractId, CoopFlagSpecified, WithPgPool> {
     pub async fn build(self) -> Result<ActiveContract> {
         let periodicals_response = get_periodicals().await?;
         let contracts_response = periodicals_response
@@ -96,11 +134,19 @@ impl ActiveContractBuilder<ContractId> {
             .iter()
             .find(|&c| c.identifier() == self.contract_id.0)
         {
-            return Ok(ActiveContract::new(contract.clone()));
+            return Ok(ActiveContract::new(
+                contract.clone(),
+                self.coop_flag.0,
+                self.pg_pool.0,
+            ));
         }
 
         match get_backup_contracts(&self.contract_id.0).await {
-            Ok(c) => Ok(ActiveContract::new(c.clone())),
+            Ok(c) => Ok(ActiveContract::new(
+                c.clone(),
+                self.coop_flag.0,
+                self.pg_pool.0,
+            )),
             Err(e) => Err(e),
         }
     }

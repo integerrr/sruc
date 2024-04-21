@@ -52,6 +52,12 @@ impl ActiveContract {
         Ok(())
     }
 
+    pub async fn update_all_coop_statuses(&mut self) {
+        for coop in &mut self.coops {
+            coop.update_coop_status().await;
+        }
+    }
+
     pub fn coops(&self) -> Iter<'_, Coop> {
         self.coops.iter()
     }

@@ -141,7 +141,7 @@ impl ActiveContractBuilder<ContractId, CoopFlagSpecified, WithPgPool> {
             .iter()
             .find(|&c| c.identifier() == self.contract_id.0)
         {
-            if let Err(e) = self.update_db(contract).await {
+            if let Err(e) = self.db_insert_new_contract(contract).await {
                 error!("Unable to insert details of this contract into db: {}", e);
             }
 
@@ -154,8 +154,8 @@ impl ActiveContractBuilder<ContractId, CoopFlagSpecified, WithPgPool> {
 
         match get_backup_contracts(&self.contract_id.0).await {
             Ok(c) => {
-                if let Err(e) = self.update_db(&c).await {
-                    error!("Unable to insert details of this contract into db: {}", e);
+                if let Err(e) = self.db_insert_new_contract(&c).await {
+                    error!("Unable to insert records of this contract into db: {}", e);
                 }
 
                 Ok(ActiveContract::new(
@@ -168,8 +168,11 @@ impl ActiveContractBuilder<ContractId, CoopFlagSpecified, WithPgPool> {
         }
     }
 
-    async fn update_db(&self, contract: &Contract) -> Result<PgQueryResult> {
-        Ok(sqlx::query!("INSERT INTO contracts(kev_id, release_date) VALUES ($1, $2) ON CONFLICT (kev_id, release_date) DO NOTHING;",
+    async fn db_insert_new_contract(&self, contract: &Contract) -> Result<PgQueryResult> {
+        Ok(sqlx::query!(
+            "INSERT INTO contracts(kev_id, release_date)
+                VALUES ($1, $2)
+                ON CONFLICT (kev_id, release_date) DO NOTHING;",
             self.contract_id.0,
             // `start_time()` is the unix timestamp for the contract's start time in `f64` for some reason,
             // should be valid unless Kev decides to blow up,

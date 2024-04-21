@@ -2,7 +2,10 @@ use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 
 use anyhow::{Error, Result};
+use log::error;
 use serde::{Deserialize, Serialize};
+use sqlx::postgres::PgQueryResult;
+use sqlx::types::time::OffsetDateTime;
 use sqlx::PgPool;
 use thiserror::Error;
 
@@ -256,9 +259,107 @@ impl CoopBuilder<WithContract, WithCoopCode, WithPgPool> {
         let coop = get_coop_status(self.contract.0.identifier(), &self.coop_code.0).await?;
         match &coop.response_status() {
             ResponseStatus::NoError => {
+                if let Err(e) = self.update_db_players_table(&coop).await {
+                    error!(
+                        "Unable to insert records of this player into players table: {}",
+                        e
+                    );
+                }
+
+                if let Err(e) = self.update_db_coops_table().await {
+                    error!(
+                        "Unable to insert records of this coop into coops table: {}",
+                        e
+                    );
+                }
+
+                if let Err(e) = self.update_db_coops_players_table(&coop).await {
+                    error!(
+                        "Unable to insert records of one or more players into the coops_players table: {}",
+                        e
+                    );
+                }
+
                 Ok(Coop::new(self.pg_pool.0, coop, self.contract.0))
             }
             _ => Err(Error::from(InvalidCoopCode)),
         }
+    }
+
+    async fn update_db_players_table(&self, coop: &ContractCoopStatusResponse) -> Result<()> {
+        for player in &coop.contributors {
+            sqlx::query!(
+                "INSERT INTO players(in_game_name)
+                VALUES ($1)
+                ON CONFLICT
+                ON CONSTRAINT unique_player DO NOTHING;",
+                player.user_name()
+            )
+            .execute(&self.pg_pool.0)
+            .await?;
+        }
+        Ok(())
+    }
+
+    async fn update_db_coops_table(&self) -> Result<PgQueryResult> {
+        Ok(sqlx::query!(
+            "INSERT INTO coops(contracts_key, coop_code)
+                VALUES ( (SELECT id FROM contracts WHERE kev_id=$1), $2)
+                ON CONFLICT (contracts_key, coop_code) DO NOTHING;",
+            self.contract.0.identifier(),
+            self.coop_code.0.clone(),
+        )
+        .execute(&self.pg_pool.0)
+        .await?)
+    }
+
+    async fn update_db_coops_players_table(&self, coop: &ContractCoopStatusResponse) -> Result<()> {
+        for player in &coop.contributors {
+            sqlx::query!(
+                "INSERT INTO coops_players(
+                coops_key,
+                players_key,
+                timestamp,
+                tokens,
+                total_eggs_laid,
+                shipping_rate,
+                farm_last_sync_time,
+                recently_active,
+                active,
+                time_cheat_detected,
+                tokens_spent
+                )
+                VALUES (
+                (SELECT coops.id FROM coops INNER JOIN contracts ON contracts.id=coops.contracts_key WHERE coops.coop_code=$1),
+                (SELECT id FROM players WHERE in_game_name=$2),
+                $3,
+                $4,
+                $5,
+                $6,
+                $7,
+                $8,
+                $9,
+                $10,
+                $11
+                );",
+                self.coop_code.0.clone(),
+                player.user_name(),
+                OffsetDateTime::now_utc(),
+                player.boost_tokens() as i32,
+                player.contribution_amount(),
+                player.contribution_rate(),
+                match player.farm_info.as_ref() {
+                    Some(farm) => OffsetDateTime::from_unix_timestamp(farm.timestamp() as i64).unwrap(),
+                    None => OffsetDateTime::from_unix_timestamp(0_i64).unwrap(),
+                },
+                player.recently_active(),
+                player.active(),
+                player.time_cheat_detected(),
+                player.boost_tokens_spent() as i32
+            )
+            .execute(&self.pg_pool.0)
+            .await?;
+        }
+        Ok(())
     }
 }

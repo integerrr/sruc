@@ -2,6 +2,7 @@ use std::fmt::{Display, Formatter};
 use std::slice::Iter;
 
 use anyhow::{Context, Result};
+use log::error;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -24,16 +25,22 @@ impl ActiveContract {
         }
     }
 
-    pub async fn add_coop(&mut self, coop_code: impl Into<String> + Clone) -> Result<()> {
-        let new = CoopBuilder::new()
-            .with(self.contract.clone(), coop_code.clone())
-            .build()
-            .await
-            .context(format!(
-                "Invalid coop code: \"{}\"",
-                coop_code.clone().into()
-            ))?;
-        self.coops.push(new);
+    pub async fn add_coops(&mut self, coop_codes: &[impl Into<String> + Clone]) -> Result<()> {
+        for code in coop_codes {
+            let new = match CoopBuilder::new()
+                .with(self.contract.clone(), code.clone())
+                .build()
+                .await
+            {
+                Ok(coop) => coop,
+                Err(_) => {
+                    error!("Invalid coop code: \"{}\"", code.clone().into());
+                    continue;
+                }
+            };
+            // .context(format!("Invalid coop code: \"{}\"", code.clone().into()))?;
+            self.coops.push(new);
+        }
         self.coops.sort();
         Ok(())
     }

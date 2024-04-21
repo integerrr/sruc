@@ -18,3 +18,4 @@ thiserror = "1.0.56"
 tokio = { version = "1.35.1", features = ["full"] }
 zune-inflate = "0.2.54"
 ei = { path = "../ei" }
+log = "0.4.21"

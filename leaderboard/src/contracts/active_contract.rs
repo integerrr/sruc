@@ -45,7 +45,6 @@ impl ActiveContract {
                     continue;
                 }
             };
-            // .context(format!("Invalid coop code: \"{}\"", code.clone().into()))?;
             self.coops.push(new);
         }
         self.coops.sort();

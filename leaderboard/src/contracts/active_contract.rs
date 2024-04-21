@@ -4,6 +4,8 @@ use std::slice::Iter;
 use anyhow::{Context, Result};
 use log::error;
 use serde::{Deserialize, Serialize};
+use sqlx::postgres::PgQueryResult;
+use sqlx::types::time::OffsetDateTime;
 use sqlx::PgPool;
 use thiserror::Error;
 
@@ -139,6 +141,10 @@ impl ActiveContractBuilder<ContractId, CoopFlagSpecified, WithPgPool> {
             .iter()
             .find(|&c| c.identifier() == self.contract_id.0)
         {
+            if let Err(e) = self.update_db(contract).await {
+                error!("Unable to insert details of this contract into db: {}", e);
+            }
+
             return Ok(ActiveContract::new(
                 contract.clone(),
                 self.coop_flag.0,
@@ -147,12 +153,27 @@ impl ActiveContractBuilder<ContractId, CoopFlagSpecified, WithPgPool> {
         }
 
         match get_backup_contracts(&self.contract_id.0).await {
-            Ok(c) => Ok(ActiveContract::new(
-                c.clone(),
-                self.coop_flag.0,
-                self.pg_pool.0,
-            )),
+            Ok(c) => {
+                if let Err(e) = self.update_db(&c).await {
+                    error!("Unable to insert details of this contract into db: {}", e);
+                }
+
+                Ok(ActiveContract::new(
+                    c.clone(),
+                    self.coop_flag.0,
+                    self.pg_pool.0,
+                ))
+            }
             Err(e) => Err(e),
         }
+    }
+
+    async fn update_db(&self, contract: &Contract) -> Result<PgQueryResult> {
+        Ok(sqlx::query!("INSERT INTO contracts(kev_id, release_date) VALUES ($1, $2) ON CONFLICT (kev_id, release_date) DO NOTHING;",
+            self.contract_id.0,
+            OffsetDateTime::from_unix_timestamp(contract.start_time() as i64).unwrap_or(OffsetDateTime::from_unix_timestamp(0_i64).unwrap())
+        )
+        .execute(&self.pg_pool.0)
+        .await?)
     }
 }

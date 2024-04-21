@@ -8,7 +8,7 @@ use sqlx::postgres::PgPoolOptions;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::Builder::from_env("RUST_LOG");
+    env_logger::Builder::from_env("RUST_LOG").init();
     let pgpool = PgPoolOptions::new()
         .max_connections(5)
         .connect("postgres://localhost:5432/whal-int-test")

@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter};
 use std::slice::Iter;
 
 use anyhow::{Context, Result};
-use log::error;
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgQueryResult;
 use sqlx::types::time::OffsetDateTime;
@@ -56,13 +56,19 @@ impl ActiveContract {
     }
 
     pub async fn update_all_coop_statuses(&mut self) {
+        info!("Updating all coop statuses...");
         for coop in &mut self.coops {
             coop.update_coop_status().await;
         }
+        info!("Done");
     }
 
     pub fn coops(&self) -> Iter<'_, Coop> {
         self.coops.iter()
+    }
+
+    pub fn all_coops_green_scrolled(&self) -> bool {
+        self.coops().all(|c| c.green_scrolled())
     }
 }
 

@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 
 use anyhow::{Error, Result};
-use log::{debug, error};
+use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 use sqlx::types::time::OffsetDateTime;
 use sqlx::PgPool;
@@ -88,7 +88,18 @@ impl Coop {
         Duration::new(total)
     }
 
+    pub fn green_scrolled(&self) -> bool {
+        self.coop_status.cleared_for_exit()
+    }
+
     pub async fn update_coop_status(&mut self) {
+        if self.coop_status.cleared_for_exit() {
+            info!(
+                "Coop \"{}\" has green scrolled, status update will not be performed.",
+                self.coop_id()
+            )
+        }
+        debug!("Updating status of coop \"{}\"", self.coop_id());
         let new_status = get_coop_status(self.contract_id(), self.coop_id())
             .await
             .expect("Both contract ID and coop code should have been validated at this point");

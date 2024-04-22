@@ -37,10 +37,8 @@ async fn main() -> Result<()> {
     let mut sr_table = SrucTable::new();
     sr_table.add_data_rows(sr.coops().as_slice());
 
-    loop {
-        info!("Updating all coop statuses...");
+    while !sr.all_coops_green_scrolled() {
         sr.update_all_coop_statuses().await;
-        info!("Done.");
         info!("Sleeping for 5 minutes...");
         sleep(Duration::from_secs_f32(300_f32)).await;
     }

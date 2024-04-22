@@ -330,9 +330,8 @@ impl CoopBuilder<WithContract, WithCoopCode, WithPgPool> {
                 tokens_spent
                 )
                 VALUES (
-                (SELECT coops.id FROM coops INNER JOIN contracts ON contracts.id=coops.contracts_key WHERE coops.coop_code=$1),
-                (SELECT id FROM players WHERE in_game_name=$2),
-                $3,
+                (SELECT coops.id FROM coops INNER JOIN contracts ON contracts.id=coops.contracts_key WHERE (coops.coop_code=$1 AND contracts.kev_id=$2)),
+                (SELECT id FROM players WHERE in_game_name=$3),
                 $4,
                 $5,
                 $6,
@@ -340,9 +339,11 @@ impl CoopBuilder<WithContract, WithCoopCode, WithPgPool> {
                 $8,
                 $9,
                 $10,
-                $11
+                $11,
+                $12
                 );",
                 self.coop_code.0.clone(),
+                self.contract.0.identifier(),
                 player.user_name(),
                 OffsetDateTime::now_utc(),
                 player.boost_tokens() as i32,

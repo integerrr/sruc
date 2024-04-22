@@ -4,7 +4,9 @@ use leaderboard::contracts::active_contract::ActiveContractBuilder;
 use leaderboard::contracts::coop_flag::CoopFlag;
 
 use leaderboard::report_generator::sruc::SrucTable;
+use log::info;
 use sqlx::postgres::PgPoolOptions;
+use tokio::time::{sleep, Duration};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -20,32 +22,28 @@ async fn main() -> Result<()> {
         .connect("postgres://localhost:5432/whal-int-test")
         .await?;
 
-    let ultra_contract_id = "Luncheggbles-2022";
-    let fr_coop_ids = vec!["regime813", "father747", "degree267", "holyshit"];
-    let usr_coop_ids = vec!["manila784"];
+    let contract_id = "eggene-2024";
+    let sr_coop_ids = vec!["benson376", "better858", "morgan225"];
 
-    let mut fr = ActiveContractBuilder::new()
-        .with_contract_id(ultra_contract_id)
-        .with_coop_flag(CoopFlag::Fastrun)
-        .with_pg_pool(pgpool.clone())
-        .build()
-        .await?;
-
-    let mut usr = ActiveContractBuilder::new()
-        .with_contract_id(ultra_contract_id)
+    let mut sr = ActiveContractBuilder::new()
+        .with_contract_id(contract_id)
         .with_coop_flag(CoopFlag::Speedrun)
         .with_pg_pool(pgpool.clone())
         .build()
         .await?;
 
-    let _ = fr.add_coops(&fr_coop_ids).await;
-    let _ = usr.add_coops(&usr_coop_ids).await;
+    let _ = sr.add_coops(&sr_coop_ids).await;
 
-    let mut fr_table = SrucTable::new();
-    fr_table.add_data_rows(fr.coops().as_slice());
+    let mut sr_table = SrucTable::new();
+    sr_table.add_data_rows(sr.coops().as_slice());
 
-    let mut usr_table = SrucTable::new();
-    usr_table.add_data_rows(usr.coops().as_slice());
+    loop {
+        info!("Updating all coop statuses...");
+        sr.update_all_coop_statuses().await;
+        info!("Done.");
+        info!("Sleeping for 5 minutes...");
+        sleep(Duration::from_secs_f32(300_f32)).await;
+    }
 
     Ok(())
 }

@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use ei::ei::Contract;
 
-use crate::egg_inc_api::{get_backup_contracts, get_periodicals};
+use crate::api::{get_backup_contracts, get_periodicals};
 
 use super::coop::{Coop, CoopBuilder};
 use super::coop_flag::CoopFlag;

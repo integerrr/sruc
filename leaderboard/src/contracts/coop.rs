@@ -11,8 +11,8 @@ use thiserror::Error;
 use ei::ei::contract::{Goal, GradeSpec};
 use ei::ei::{contract_coop_status_response::ResponseStatus, Contract, ContractCoopStatusResponse};
 
+use crate::api::get_coop_status;
 use crate::custom_errors::InvalidCoopCode;
-use crate::egg_inc_api::get_coop_status;
 use crate::formatter::discord_timestamp::DiscordTimestamp;
 use crate::formatter::duration::Duration;
 

@@ -1,3 +1,6 @@
+use anyhow::Result;
+use zune_inflate::DeflateDecoder;
+
 use crate::{BUILD, CLIENT_VERSION, CURRENT_CLIENT_VERSION, EID, PLATFORM, VERSION};
 
 pub mod custom_traits;
@@ -72,4 +75,13 @@ impl std::fmt::Display for contract::PlayerGrade {
             }
         )
     }
+}
+
+pub fn parse_auth_msg(auth_msg: AuthenticatedMessage) -> Result<Vec<u8>> {
+    if !auth_msg.compressed() {
+        return Ok(auth_msg.message().to_vec());
+    }
+    let mut decoder = DeflateDecoder::new(auth_msg.message());
+    let uncompressed = decoder.decode_zlib()?;
+    Ok(uncompressed)
 }

@@ -3,10 +3,9 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use prost::Message;
-use zune_inflate::DeflateDecoder;
 
 use crate::ei::{
-    AuthenticatedMessage, ContractCoopStatusRequest, ContractCoopStatusResponse,
+    self, AuthenticatedMessage, ContractCoopStatusRequest, ContractCoopStatusResponse,
     EggIncFirstContactRequest, EggIncFirstContactResponse, GetPeriodicalsRequest,
     PeriodicalsResponse,
 };
@@ -42,20 +41,9 @@ pub trait EiApiRequest: Message + Default {
             let auth_msg = AuthenticatedMessage::decode(decoded_byte_arr.as_slice())
                 .context("cannot decode into `AuthenticatedMessage`")?;
             Ok(Self::Response::decode(
-                Self::parse_auth_msg(auth_msg)?.as_slice(),
+                ei::parse_auth_msg(auth_msg)?.as_slice(),
             )?)
         }
-    }
-
-    fn parse_auth_msg(auth_msg: AuthenticatedMessage) -> Result<Vec<u8>> {
-        if !auth_msg.compressed() {
-            return Ok(auth_msg.message().to_vec());
-        }
-        let mut decoder = DeflateDecoder::new(auth_msg.message());
-        let uncompressed = decoder
-            .decode_zlib()
-            .context("Error inflating `message` field of auth_msg")?;
-        Ok(uncompressed)
     }
 }
 

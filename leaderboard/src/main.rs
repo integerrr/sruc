@@ -22,8 +22,11 @@ async fn main() -> Result<()> {
         .connect("postgres://localhost:5432/whal-int-test")
         .await?;
 
-    let contract_id = "eggene-2024";
-    let sr_coop_ids = vec!["benson376", "better858", "morgan225"];
+    let contract_id = "may-the-force-2020";
+    let sr_coop_ids = vec![
+        "magnet415",
+        "barley504",
+    ];
 
     let mut sr = ActiveContractBuilder::new()
         .with_contract_id(contract_id)
@@ -36,6 +39,7 @@ async fn main() -> Result<()> {
 
     let mut sr_table = SrucTable::new();
     sr_table.add_data_rows(sr.coops().as_slice());
+    sr_table.generate();
 
     while !sr.all_coops_green_scrolled() {
         sr.update_all_coop_statuses().await;
@@ -43,5 +47,6 @@ async fn main() -> Result<()> {
         sleep(Duration::from_secs_f32(300_f32)).await;
     }
 
+    info!("All coops are greenflagged. Exiting.");
     Ok(())
 }

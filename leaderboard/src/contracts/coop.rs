@@ -223,32 +223,13 @@ impl Coop {
     async fn update_db_coops_players_table(&self, coop: &ContractCoopStatusResponse) {
         for player in &coop.contributors {
             match sqlx::query!(
-                "INSERT INTO coops_players(
-                coops_key,
-                players_key,
-                timestamp,
-                tokens,
-                total_eggs_laid,
-                shipping_rate,
-                farm_last_sync_time,
-                recently_active,
-                active,
-                time_cheat_detected,
-                tokens_spent
-                )
-                VALUES (
-                (SELECT coops.id FROM coops INNER JOIN contracts ON contracts.id=coops.contracts_key WHERE (coops.coop_code=$1 AND contracts.kev_id=$2)),
+                "INSERT INTO coops_players( coops_key, players_key, timestamp, tokens,
+                total_eggs_laid, shipping_rate, farm_last_sync_time, recently_active,
+                active, time_cheat_detected, tokens_spent )
+                VALUES
+                ( (SELECT coops.id FROM coops INNER JOIN contracts ON contracts.id=coops.contracts_key WHERE (coops.coop_code=$1 AND contracts.kev_id=$2)),
                 (SELECT id FROM players WHERE in_game_name=$3),
-                $4,
-                $5,
-                $6,
-                $7,
-                $8,
-                $9,
-                $10,
-                $11,
-                $12
-                );",
+                $4, $5, $6, $7, $8, $9, $10, $11, $12 );",
                 self.coop_id(),
                 self.contract_id(),
                 player.user_name(),
@@ -257,7 +238,12 @@ impl Coop {
                 player.contribution_amount(),
                 player.contribution_rate(),
                 match player.farm_info.as_ref() {
-                    Some(farm) => OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp() + (farm.timestamp() as i64)).unwrap(),
+                    Some(farm) => {
+                        OffsetDateTime::from_unix_timestamp(
+                            OffsetDateTime::now_utc().unix_timestamp() + (farm.timestamp() as i64)
+                        )
+                        .unwrap()
+                    },
                     None => OffsetDateTime::from_unix_timestamp(0_i64).unwrap(),
                 },
                 player.recently_active(),
@@ -269,10 +255,19 @@ impl Coop {
             .await {
                 Ok(qr) => {
                     if qr.rows_affected() > 0 {
-                        debug!("Inserted row for player \"{}\" in coop \"{}\" into coops_players table", player.user_name(), self.coop_id());
+                        debug!(
+                            "Inserted row for player \"{}\" in coop \"{}\" into coops_players table",
+                            player.user_name(),
+                            self.coop_id()
+                        );
                     }
                 },
-                Err(e) => error!("Unable to insert records of player \"{}\" in coop \"{}\" into the coops_players table: {}", player.user_name(), self.coop_id(), e),
+                Err(e) => error!(
+                    "Unable to insert records of player \"{}\" in coop \"{}\" into the coops_players table: {}",
+                    player.user_name(),
+                    self.coop_id(),
+                    e
+                ),
             }
         }
     }

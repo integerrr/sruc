@@ -2,23 +2,19 @@ use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 
 use anyhow::{Error, Result};
-use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
-use sqlx::types::time::OffsetDateTime;
-use sqlx::PgPool;
 use thiserror::Error;
 
 use ei::ei::contract::{Goal, GradeSpec};
 use ei::ei::{contract_coop_status_response::ResponseStatus, Contract, ContractCoopStatusResponse};
 
 use crate::api::get_coop_status;
-use crate::custom_errors::InvalidCoopCode;
+use crate::error::InvalidCoopCode;
 use crate::formatter::discord_timestamp::DiscordTimestamp;
 use crate::formatter::duration::Duration;
 
 #[derive(Debug, Error, Clone)]
 pub struct Coop {
-    pg_pool: PgPool,
     coop_status: ContractCoopStatusResponse,
 
     // These fields are stored because you have to extract these from the contract
@@ -28,9 +24,8 @@ pub struct Coop {
 }
 
 impl Coop {
-    fn new(pg_pool: PgPool, coop_status: ContractCoopStatusResponse, contract: Contract) -> Self {
+    fn new(coop_status: ContractCoopStatusResponse, contract: Contract) -> Self {
         Self {
-            pg_pool,
             coop_status: coop_status.clone(),
             grade_spec: contract
                 .grade_specs
@@ -92,25 +87,6 @@ impl Coop {
         self.coop_status.cleared_for_exit()
     }
 
-    pub async fn update_coop_status(&mut self) {
-        if self.coop_status.cleared_for_exit() {
-            info!(
-                "Coop \"{}\" has green scrolled, status update will not be performed.",
-                self.coop_id()
-            )
-        }
-        debug!("Updating status of coop \"{}\"", self.coop_id());
-        let new_status = get_coop_status(self.contract_id(), self.coop_id())
-            .await
-            .expect("Both contract ID and coop code should have been validated at this point");
-
-        self.update_db_players_table(&new_status).await;
-        self.update_db_coops_table().await;
-        self.update_db_coops_players_table(&new_status).await;
-
-        self.coop_status = new_status;
-    }
-
     fn coop_allowable_seconds_remaining(&self) -> f64 {
         self.coop_status.seconds_remaining()
     }
@@ -168,109 +144,6 @@ impl Coop {
     fn predicted_seconds_remaining(&self) -> i64 {
         (self.eggs_remaining() / self.total_shipping_rate()) as i64
     }
-
-    async fn update_db_players_table(&self, coop: &ContractCoopStatusResponse) {
-        for player in &coop.contributors {
-            match sqlx::query!(
-                "INSERT INTO players(in_game_name)
-                    VALUES ($1)
-                    ON CONFLICT
-                    ON CONSTRAINT unique_player DO NOTHING;",
-                player.user_name()
-            )
-            .execute(&self.pg_pool)
-            .await
-            {
-                Ok(qr) => {
-                    if qr.rows_affected() > 0 {
-                        debug!(
-                            "Inserted player \"{}\" into players table",
-                            player.user_name()
-                        );
-                    }
-                }
-                Err(e) => error!(
-                    "Unable to insert records of this player into players table: {}",
-                    e
-                ),
-            }
-        }
-    }
-
-    async fn update_db_coops_table(&self) {
-        match sqlx::query!(
-            "INSERT INTO coops(contracts_key, coop_code)
-                VALUES ( (SELECT id FROM contracts WHERE kev_id=$1), $2)
-                ON CONFLICT (contracts_key, coop_code) DO NOTHING;",
-            self.contract_id(),
-            self.coop_id(),
-        )
-        .execute(&self.pg_pool)
-        .await
-        {
-            Ok(qr) => {
-                if qr.rows_affected() > 0 {
-                    debug!("Inserted coop \"{}\" into coops table", self.coop_id());
-                }
-            }
-            Err(e) => error!(
-                "Unable to insert records of this coop into coops table: {}",
-                e
-            ),
-        }
-    }
-
-    async fn update_db_coops_players_table(&self, coop: &ContractCoopStatusResponse) {
-        for player in &coop.contributors {
-            match sqlx::query!(
-                "INSERT INTO coops_players( coops_key, players_key, timestamp, tokens,
-                total_eggs_laid, shipping_rate, farm_last_sync_time, recently_active,
-                active, time_cheat_detected, tokens_spent )
-                VALUES
-                ( (SELECT coops.id FROM coops INNER JOIN contracts ON contracts.id=coops.contracts_key WHERE (coops.coop_code=$1 AND contracts.kev_id=$2)),
-                (SELECT id FROM players WHERE in_game_name=$3),
-                $4, $5, $6, $7, $8, $9, $10, $11, $12 );",
-                self.coop_id(),
-                self.contract_id(),
-                player.user_name(),
-                OffsetDateTime::now_utc(),
-                player.boost_tokens() as i32,
-                player.contribution_amount(),
-                player.contribution_rate(),
-                match player.farm_info.as_ref() {
-                    Some(farm) => {
-                        OffsetDateTime::from_unix_timestamp(
-                            OffsetDateTime::now_utc().unix_timestamp() + (farm.timestamp() as i64)
-                        )
-                        .unwrap()
-                    },
-                    None => OffsetDateTime::from_unix_timestamp(0_i64).unwrap(),
-                },
-                player.recently_active(),
-                player.active(),
-                player.time_cheat_detected(),
-                player.boost_tokens_spent() as i32
-            )
-            .execute(&self.pg_pool)
-            .await {
-                Ok(qr) => {
-                    if qr.rows_affected() > 0 {
-                        debug!(
-                            "Inserted row for player \"{}\" in coop \"{}\" into coops_players table",
-                            player.user_name(),
-                            self.coop_id()
-                        );
-                    }
-                },
-                Err(e) => error!(
-                    "Unable to insert records of player \"{}\" in coop \"{}\" into the coops_players table: {}",
-                    player.user_name(),
-                    self.coop_id(),
-                    e
-                ),
-            }
-        }
-    }
 }
 
 impl Display for Coop {
@@ -321,61 +194,43 @@ pub struct WithContract(Contract);
 pub struct NoCoopCode;
 #[derive(Debug, Clone, Default)]
 pub struct WithCoopCode(String);
-
-#[derive(Debug, Clone, Default)]
-pub struct NoPgPool;
-#[derive(Debug, Clone)]
-pub struct WithPgPool(PgPool);
 // endregion:   --- Builder States
 
 #[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub struct CoopBuilder<K, C, P> {
+pub struct CoopBuilder<K, C> {
     contract: K,
     coop_code: C,
-    pg_pool: P,
 }
 
-impl CoopBuilder<NoContract, NoCoopCode, NoPgPool> {
+impl CoopBuilder<NoContract, NoCoopCode> {
     pub fn new() -> Self {
         CoopBuilder::default()
     }
 }
 
-impl<C, P> CoopBuilder<NoContract, C, P> {
-    pub fn with_contract(self, contract: Contract) -> CoopBuilder<WithContract, C, P> {
+impl<C> CoopBuilder<NoContract, C> {
+    pub fn with_contract(self, contract: Contract) -> CoopBuilder<WithContract, C> {
         CoopBuilder {
             contract: WithContract(contract),
             coop_code: self.coop_code,
-            pg_pool: self.pg_pool,
         }
     }
 }
 
-impl<K, P> CoopBuilder<K, NoCoopCode, P> {
-    pub fn with_coop_code(self, coop_code: impl Into<String>) -> CoopBuilder<K, WithCoopCode, P> {
+impl<K> CoopBuilder<K, NoCoopCode> {
+    pub fn with_coop_code(self, coop_code: impl Into<String>) -> CoopBuilder<K, WithCoopCode> {
         CoopBuilder {
             contract: self.contract,
             coop_code: WithCoopCode(coop_code.into()),
-            pg_pool: self.pg_pool,
         }
     }
 }
 
-impl<K, C> CoopBuilder<K, C, NoPgPool> {
-    pub fn with_pg_pool(self, pg_pool: PgPool) -> CoopBuilder<K, C, WithPgPool> {
-        CoopBuilder {
-            contract: self.contract,
-            coop_code: self.coop_code,
-            pg_pool: WithPgPool(pg_pool),
-        }
-    }
-}
-
-impl CoopBuilder<WithContract, WithCoopCode, WithPgPool> {
+impl CoopBuilder<WithContract, WithCoopCode> {
     pub async fn build(self) -> Result<Coop> {
         let coop = get_coop_status(self.contract.0.identifier(), &self.coop_code.0).await?;
         match &coop.response_status() {
-            ResponseStatus::NoError => Ok(Coop::new(self.pg_pool.0, coop, self.contract.0)),
+            ResponseStatus::NoError => Ok(Coop::new(coop, self.contract.0)),
             _ => Err(Error::from(InvalidCoopCode)),
         }
     }

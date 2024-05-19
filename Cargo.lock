@@ -868,6 +868,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.0",
  "chrono",
+ "dotenvy_macro",
  "ei",
  "env_logger",
  "log",

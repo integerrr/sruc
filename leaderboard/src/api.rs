@@ -9,7 +9,9 @@ use ei::ei::{
 use prost::Message;
 use serde::{Deserialize, Serialize};
 
-use crate::custom_errors::InvalidContractId;
+use crate::error::InvalidContractId;
+
+pub mod maj_api;
 
 pub async fn get_coop_status(
     contract_id: &str,

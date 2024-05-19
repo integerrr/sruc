@@ -2,16 +2,13 @@ use std::fmt::{Display, Formatter};
 use std::slice::Iter;
 
 use anyhow::{Context, Result};
-use log::{error, info};
+use log::error;
 use serde::{Deserialize, Serialize};
-use sqlx::postgres::PgQueryResult;
-use sqlx::types::time::OffsetDateTime;
-use sqlx::PgPool;
 use thiserror::Error;
 
 use ei::ei::Contract;
 
-use crate::api::{get_backup_contracts, get_periodicals};
+use crate::api::{get_backup_contracts, get_periodicals, maj_api};
 
 use super::coop::{Coop, CoopBuilder};
 use super::coop_flag::CoopFlag;
@@ -21,31 +18,30 @@ pub struct ActiveContract {
     contract: Contract,
     coop_flag: CoopFlag,
     coops: Vec<Coop>,
-    pg_pool: PgPool,
 }
 
 impl ActiveContract {
-    fn new(contract: Contract, coop_flag: CoopFlag, pg_pool: PgPool) -> Self {
+    fn new(contract: Contract, coop_flag: CoopFlag) -> Self {
         Self {
             contract,
             coop_flag,
             coops: vec![],
-            pg_pool,
         }
     }
 
-    pub async fn add_coops(&mut self, coop_codes: &[impl Into<String> + Clone]) -> Result<()> {
+    pub async fn fill_coops(&mut self) -> Result<()> {
+        let coop_codes =
+            maj_api::get_maj_active_coop_codes(self.contract.identifier(), self.coop_flag).await?;
         for code in coop_codes {
             let new = match CoopBuilder::new()
                 .with_contract(self.contract.clone())
                 .with_coop_code(code.clone())
-                .with_pg_pool(self.pg_pool.clone())
                 .build()
                 .await
             {
                 Ok(coop) => coop,
                 Err(_) => {
-                    error!("Invalid coop code: \"{}\"", code.clone().into());
+                    error!("Invalid coop code: \"{}\"", code.clone());
                     continue;
                 }
             };
@@ -55,12 +51,8 @@ impl ActiveContract {
         Ok(())
     }
 
-    pub async fn update_all_coop_statuses(&mut self) {
-        info!("Updating all coop statuses...");
-        for coop in &mut self.coops {
-            coop.update_coop_status().await;
-        }
-        info!("Done");
+    pub fn contract_name(&self) -> &str {
+        self.contract.identifier()
     }
 
     pub fn coops(&self) -> Iter<'_, Coop> {
@@ -87,58 +79,43 @@ pub struct ContractId(String);
 pub struct CoopFlagNotSpecified;
 #[derive(Debug, Clone, Default)]
 pub struct CoopFlagSpecified(CoopFlag);
-#[derive(Debug, Clone, Default)]
-pub struct NoPgPool;
-#[derive(Debug, Clone)]
-pub struct WithPgPool(PgPool);
 // endregion:   --- Builder States
 
 #[derive(Debug, Error, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub struct ActiveContractBuilder<I, F, P> {
+pub struct ActiveContractBuilder<I, F> {
     contract_id: I,
     coop_flag: F,
-    pg_pool: P,
 }
 
-impl ActiveContractBuilder<NoContractId, CoopFlagNotSpecified, NoPgPool> {
+impl ActiveContractBuilder<NoContractId, CoopFlagNotSpecified> {
     pub fn new() -> Self {
         ActiveContractBuilder::default()
     }
 }
 
-impl<I, F, P> ActiveContractBuilder<I, F, P> {
+impl<I, F> ActiveContractBuilder<I, F> {
     pub fn with_contract_id(
         self,
         contract_id: impl Into<String>,
-    ) -> ActiveContractBuilder<ContractId, F, P> {
+    ) -> ActiveContractBuilder<ContractId, F> {
         ActiveContractBuilder {
             contract_id: ContractId(contract_id.into()),
             coop_flag: self.coop_flag,
-            pg_pool: self.pg_pool,
         }
     }
 
     pub fn with_coop_flag(
         self,
         coop_flag: CoopFlag,
-    ) -> ActiveContractBuilder<I, CoopFlagSpecified, P> {
+    ) -> ActiveContractBuilder<I, CoopFlagSpecified> {
         ActiveContractBuilder {
             contract_id: self.contract_id,
             coop_flag: CoopFlagSpecified(coop_flag),
-            pg_pool: self.pg_pool,
-        }
-    }
-
-    pub fn with_pg_pool(self, pool: PgPool) -> ActiveContractBuilder<I, F, WithPgPool> {
-        ActiveContractBuilder {
-            contract_id: self.contract_id,
-            coop_flag: self.coop_flag,
-            pg_pool: WithPgPool(pool),
         }
     }
 }
 
-impl ActiveContractBuilder<ContractId, CoopFlagSpecified, WithPgPool> {
+impl ActiveContractBuilder<ContractId, CoopFlagSpecified> {
     pub async fn build(self) -> Result<ActiveContract> {
         let periodicals_response = get_periodicals().await?;
         let contracts_response = periodicals_response
@@ -149,45 +126,12 @@ impl ActiveContractBuilder<ContractId, CoopFlagSpecified, WithPgPool> {
             .iter()
             .find(|&c| c.identifier() == self.contract_id.0)
         {
-            if let Err(e) = self.db_insert_new_contract(contract).await {
-                error!("Unable to insert details of this contract into db: {}", e);
-            }
-
-            return Ok(ActiveContract::new(
-                contract.clone(),
-                self.coop_flag.0,
-                self.pg_pool.0,
-            ));
+            return Ok(ActiveContract::new(contract.clone(), self.coop_flag.0));
         }
 
         match get_backup_contracts(&self.contract_id.0).await {
-            Ok(c) => {
-                if let Err(e) = self.db_insert_new_contract(&c).await {
-                    error!("Unable to insert records of this contract into db: {}", e);
-                }
-
-                Ok(ActiveContract::new(
-                    c.clone(),
-                    self.coop_flag.0,
-                    self.pg_pool.0,
-                ))
-            }
+            Ok(c) => Ok(ActiveContract::new(c.clone(), self.coop_flag.0)),
             Err(e) => Err(e),
         }
-    }
-
-    async fn db_insert_new_contract(&self, contract: &Contract) -> Result<PgQueryResult> {
-        Ok(sqlx::query!(
-            "INSERT INTO contracts(kev_id, release_date)
-                VALUES ($1, $2)
-                ON CONFLICT (kev_id, release_date) DO NOTHING;",
-            self.contract_id.0,
-            // `start_time()` is the unix timestamp for the contract's start time in `f64` for some reason,
-            // should be valid unless Kev decides to blow up,
-            // and the conversion wouldn't lose precision for the next 31 million years so it's fine
-            OffsetDateTime::from_unix_timestamp(contract.start_time() as i64).unwrap()
-        )
-        .execute(&self.pg_pool.0)
-        .await?)
     }
 }

@@ -19,3 +19,21 @@ impl Display for InvalidContractId {
         write!(f, "Invalid contract ID used")
     }
 }
+
+#[derive(Debug, Clone, Copy, Error)]
+pub struct EmptyMajResponse;
+
+impl Display for EmptyMajResponse {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Empty Maj Wonky API response")
+    }
+}
+
+#[derive(Debug, Clone, Copy, Error)]
+pub struct EmptyContractsResponse;
+
+impl Display for EmptyContractsResponse {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Empty ContractsResponse")
+    }
+}

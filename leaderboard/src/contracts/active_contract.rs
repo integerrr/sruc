@@ -52,7 +52,7 @@ impl ActiveContract {
     }
 
     pub fn contract_name(&self) -> &str {
-        self.contract.identifier()
+        self.contract.name()
     }
 
     pub fn coops(&self) -> Iter<'_, Coop> {

@@ -10,6 +10,7 @@ use ei::ei::{contract_coop_status_response::ResponseStatus, Contract, ContractCo
 
 use crate::api::get_coop_status;
 use crate::error::InvalidCoopCode;
+use crate::formatter;
 use crate::formatter::discord_timestamp::DiscordTimestamp;
 use crate::formatter::duration::Duration;
 
@@ -45,8 +46,11 @@ impl Coop {
         self.coop_status.contract_identifier()
     }
 
-    pub fn stripped_coop_id(&self) -> &str {
-        &self.coop_id()[..6]
+    pub fn stripped_coop_id(&self) -> String {
+        match self.coop_id().get(0..6) {
+            Some(slice) => slice.to_string(),
+            None => formatter::string_formatter::left_align(self.coop_id(), 6),
+        }
     }
 
     pub fn boosted_count(&self) -> u32 {
